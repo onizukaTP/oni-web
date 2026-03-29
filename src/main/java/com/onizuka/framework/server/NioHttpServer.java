@@ -1,6 +1,8 @@
 package com.onizuka.framework.server;
 
 import com.onizuka.framework.client.ClientState;
+import com.onizuka.framework.http.HttpRequest;
+import com.onizuka.framework.http.HttpRequestParser;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -117,10 +119,32 @@ public class NioHttpServer {
         while ((index = state.request.indexOf(DELIMITER)) != -1) {
             String fullRequest = state.request.substring(0, index + DELIMITER.length());
 
-            System.out.println("Full request:");
-            System.out.println(fullRequest);
+            try {
+                HttpRequest request = HttpRequestParser.parse(fullRequest);
 
-            state.request.delete(0, index + DELIMITER.length());
+                String body = "Hello from server";
+
+                String response =
+                        "HTTP/1.1 200 OK\r\n" +
+                                "Content-Length: " + body.length() + "\r\n" +
+                                "\r\n" +
+                                body;
+
+                client.write(ByteBuffer.wrap(response.getBytes()));
+
+            } catch (Exception e) {
+                String response =
+                        "HTTP/1.1 400 Bad Request\r\n" +
+                                "Content-Length: 11\r\n" +
+                                "\r\n" +
+                                "Bad Request";
+
+                client.write(ByteBuffer.wrap(response.getBytes()));
+            }
+            client.close();
+            return;
+
+//            state.request.delete(0, index + DELIMITER.length());
         }
 
         // clear buffer so it can be written into again
