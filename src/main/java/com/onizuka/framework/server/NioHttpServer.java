@@ -3,6 +3,8 @@ package com.onizuka.framework.server;
 import com.onizuka.framework.client.ClientState;
 import com.onizuka.framework.http.HttpRequest;
 import com.onizuka.framework.http.HttpRequestParser;
+import com.onizuka.framework.http.Response;
+import com.onizuka.framework.server.dispatcher.RequestDispatcher;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -122,13 +124,17 @@ public class NioHttpServer {
             try {
                 HttpRequest request = HttpRequestParser.parse(fullRequest);
 
-                String body = "Hello from server";
+                Response responseObj = RequestDispatcher.handle(request);
+
+                String statusLine = responseObj.status == 200
+                        ? "HTTP/1.1 200 OK"
+                        : "HTTP/1.1 404 Not Found";
 
                 String response =
-                        "HTTP/1.1 200 OK\r\n" +
-                                "Content-Length: " + body.length() + "\r\n" +
+                        statusLine + "\r\n" +
+                                "Content-Length: " + responseObj.body.length() + "\r\n" +
                                 "\r\n" +
-                                body;
+                                responseObj.body;
 
                 client.write(ByteBuffer.wrap(response.getBytes()));
 
