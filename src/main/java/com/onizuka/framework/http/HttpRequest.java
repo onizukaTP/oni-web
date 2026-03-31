@@ -1,5 +1,6 @@
 package com.onizuka.framework.http;
 
+import java.util.HashMap;
 import java.util.Map;
 
 public class HttpRequest {
@@ -7,6 +8,7 @@ public class HttpRequest {
     public String path;
     public String version;
     public Map<String, String> headers;
+    public Map<String, String> pathParams = new HashMap<>();
 
     public HttpRequest(String method, String path, String version, Map<String, String> headers) {
         this.method = method;
