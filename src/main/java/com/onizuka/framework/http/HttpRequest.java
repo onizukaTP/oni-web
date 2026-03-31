@@ -16,4 +16,8 @@ public class HttpRequest {
         this.version = version;
         this.headers = headers;
     }
+
+    public String getPathParam(String id) {
+        return pathParams.get(id);
+    }
 }

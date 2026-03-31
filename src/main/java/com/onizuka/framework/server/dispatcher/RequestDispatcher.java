@@ -14,8 +14,16 @@ public class RequestDispatcher {
     private static final List<Route> routes = new ArrayList<>();
 
     static {
-        routes.add(new Route("GET", "/users", "All users"));
-        routes.add(new Route("GET", "/users/{id}", "User details"));
+        routes.add(new Route("GET", "/users", req -> "All users"));
+        routes.add(new Route(
+                "GET",
+                "/users/{id}",
+                req -> {
+                    String id = req.getPathParam("id");
+                    if (id == null) return "Invalid Request";
+                    return "User details for " + id;
+                }
+        ));
     }
 
     public static Response handle(HttpRequest request) {
@@ -25,7 +33,7 @@ public class RequestDispatcher {
         if (route == null)
             return new Response(404, "Not Found");
 
-        return new Response(200, route.response);
+        return new Response(200, route.handler.apply(request));
     }
 
     // Route:
