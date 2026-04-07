@@ -1,7 +1,7 @@
 package com.onizuka.framework.server.dispatcher;
 
 import com.onizuka.framework.http.HttpRequest;
-import com.onizuka.framework.http.Response;
+import com.onizuka.framework.http.HttpResponse;
 import com.onizuka.framework.server.routing.Route;
 
 import java.util.ArrayList;
@@ -14,26 +14,35 @@ public class RequestDispatcher {
     private static final List<Route> routes = new ArrayList<>();
 
     static {
-        routes.add(new Route("GET", "/users", req -> "All users"));
+        routes.add(new Route(
+                "GET",
+                "/users",
+                req -> new HttpResponse(200, "All Users")
+            ));
         routes.add(new Route(
                 "GET",
                 "/users/{id}",
                 req -> {
                     String id = req.getPathParam("id");
-                    if (id == null) return "Invalid Request";
-                    return "User details for " + id;
+
+                    HttpResponse res = new HttpResponse(200, "{ \"id\": \"" + id + "\" }");
+                    res.addHeader("Content-Type", "application/json");
+
+                    return res;
                 }
-        ));
+            ));
     }
 
-    public static Response handle(HttpRequest request) {
+    public static HttpResponse handle(HttpRequest request) {
 
         Route route = match(request);
 
         if (route == null)
-            return new Response(404, "Not Found");
+            return new HttpResponse(404, "Not Found");
 
-        return new Response(200, route.handler.apply(request));
+        System.out.println(route);
+
+        return route.handler.apply(request);
     }
 
     // Route:
@@ -71,7 +80,7 @@ public class RequestDispatcher {
             }
             if (match) {
                 request.pathParams = params;
-                System.out.println(request.pathParams);
+                System.out.println("param: " + request.pathParams);
                 return route;
             }
         }
