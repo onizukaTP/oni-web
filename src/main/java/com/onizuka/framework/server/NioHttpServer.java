@@ -3,8 +3,12 @@ package com.onizuka.framework.server;
 import com.onizuka.framework.client.ClientState;
 import com.onizuka.framework.http.HttpRequest;
 import com.onizuka.framework.http.HttpRequestParser;
-import com.onizuka.framework.http.Response;
+import com.onizuka.framework.http.HttpResponse;
 import com.onizuka.framework.server.dispatcher.RequestDispatcher;
+import com.onizuka.framework.server.middleware.Middleware;
+import com.onizuka.framework.server.middleware.implementations.AuthMiddleware;
+import com.onizuka.framework.server.middleware.implementations.DefaultMiddlewareChain;
+import com.onizuka.framework.server.middleware.implementations.LoggingMiddleware;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -13,9 +17,18 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
+import java.nio.charset.StandardCharsets;
 import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
 
 public class NioHttpServer {
+
+    private static final List<Middleware> middlewares = List.of(
+            new LoggingMiddleware()
+//            new AuthMiddleware()
+    );
+
     public static void main(String[] args) {
         try {
             // create server socker channel
@@ -73,6 +86,7 @@ public class NioHttpServer {
 
         // -1 means client closed the connection
         if (bytesRead == -1) {
+            System.out.println("Connection closed");
             client.close();
             return;
         }
@@ -124,19 +138,52 @@ public class NioHttpServer {
             try {
                 HttpRequest request = HttpRequestParser.parse(fullRequest);
 
-                Response responseObj = RequestDispatcher.handle(request);
+                DefaultMiddlewareChain chain =
+                        new DefaultMiddlewareChain(middlewares, RequestDispatcher::handle);
 
-                String statusLine = responseObj.status == 200
-                        ? "HTTP/1.1 200 OK"
-                        : "HTTP/1.1 404 Not Found";
+                HttpResponse res = chain.next(request);
+                System.out.println("Handled request");
 
-                String response =
-                        statusLine + "\r\n" +
-                                "Content-Length: " + responseObj.body.length() + "\r\n" +
-                                "\r\n" +
-                                responseObj.body;
+                if (!res.headers.containsKey("Content-Type")) {
+                    res.addHeader("Content-Type", "text/plain; charset=UTF-8");
+                }
 
-                client.write(ByteBuffer.wrap(response.getBytes()));
+                StringBuilder response = new StringBuilder();
+
+                // status line
+                String statusLine;
+                switch (res.status) {
+                    case 200: statusLine = "HTTP/1.1 200 OK"; break;
+                    case 404: statusLine = "HTTP/1.1 404 Not Found"; break;
+                    case 401: statusLine = "HTTP/1.1 401 Unauthorized"; break;
+                    default: statusLine = "HTTP/1.1 500 Internal Server Error";
+                }
+
+                response.append(statusLine).append("\r\n");
+
+                // headers
+                for (Map.Entry<String, String> header : res.headers.entrySet()) {
+                    response.append(header.getKey())
+                            .append(": ")
+                            .append(header.getValue())
+                            .append("\r\n");
+                }
+
+                // mandatory header
+                response.append("Content-Length: ")
+                                .append(res.body.length())
+                                        .append("\r\n");
+
+                // empty line
+                response.append("\r\n");
+
+                // body
+                response.append(res.body);
+
+                System.out.println("Response:");
+                System.out.println(response);
+
+                client.write(ByteBuffer.wrap(response.toString().getBytes(StandardCharsets.UTF_8)));
 
             } catch (Exception e) {
                 String response =
@@ -147,13 +194,14 @@ public class NioHttpServer {
 
                 client.write(ByteBuffer.wrap(response.getBytes()));
             }
+
+            // connection closed - disables keep-alive/multiple requests per connection
             client.close();
             return;
-
-//            state.request.delete(0, index + DELIMITER.length());
         }
 
         // clear buffer so it can be written into again
+        // unreachable code path, connection is closed above and the method is returned
         buffer.clear(); // position = 0, limit = capacity
         /*
          * Example: back to write mode
