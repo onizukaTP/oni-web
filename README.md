@@ -69,3 +69,7 @@ channels cannot be registered with a Selector, resulting in an `IllegalBlockingM
 **Where do you handle routing?** <br>
 I separate I/O. parsing and routing into different components, After parsing the request,
 I pass it to a dispatcher that decided the response based on method and path.
+
+**What is Unwinding?** <br>
+Call stack unwinding happens when functions start returning (or when an error/exception occurs).
+and the stack gets cleared step by step.
