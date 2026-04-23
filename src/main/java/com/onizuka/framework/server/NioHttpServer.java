@@ -1,5 +1,6 @@
 package com.onizuka.framework.server;
 
+import com.onizuka.app.controllers.UserController;
 import com.onizuka.framework.client.ClientState;
 import com.onizuka.framework.http.HttpRequest;
 import com.onizuka.framework.http.HttpRequestParser;
@@ -9,6 +10,7 @@ import com.onizuka.framework.server.middleware.Middleware;
 import com.onizuka.framework.server.middleware.implementations.AuthMiddleware;
 import com.onizuka.framework.server.middleware.implementations.DefaultMiddlewareChain;
 import com.onizuka.framework.server.middleware.implementations.LoggingMiddleware;
+import com.onizuka.framework.server.routing.RouteRegistry;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -47,6 +49,8 @@ public class NioHttpServer {
             serverChannel.register(selector, SelectionKey.OP_ACCEPT);
 
             System.out.println("Server started on port 8080");
+
+            RouteRegistry.registerRoutes(UserController.class);
 
             // event loop
             while (true) {
