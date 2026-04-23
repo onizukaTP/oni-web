@@ -1,6 +1,7 @@
 package com.onizuka.framework.server.routing;
 
 import com.onizuka.framework.http.HttpRequest;
+import com.onizuka.framework.http.HttpResponse;
 import com.onizuka.framework.util.Handler;
 
 public class Route {
@@ -14,7 +15,7 @@ public class Route {
         this.handler = handler;
     }
 
-    public Object handle(HttpRequest req) {
+    public HttpResponse handle(HttpRequest req) {
         return handler.handle(req);
     }
 
