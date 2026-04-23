@@ -8,16 +8,23 @@ public class HttpRequest {
     public String path;
     public String version;
     public Map<String, String> headers;
-    public Map<String, String> pathParams = new HashMap<>();
+    public Map<String, String> pathParams;
+    public Map<String, String> queryParams;
 
-    public HttpRequest(String method, String path, String version, Map<String, String> headers) {
+    public HttpRequest(String method, String path, String version, Map<String, String> headers, Map<String, String> pathParams, Map<String, String> queryParams) {
         this.method = method;
         this.path = path;
         this.version = version;
         this.headers = headers;
+        this.pathParams = pathParams;
+        this.queryParams = queryParams;
     }
 
     public String getPathParam(String id) {
         return pathParams.get(id);
+    }
+
+    public String getQueryParam(String name) {
+        return queryParams.get(name);
     }
 }
