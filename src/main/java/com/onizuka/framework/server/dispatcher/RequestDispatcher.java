@@ -3,35 +3,36 @@ package com.onizuka.framework.server.dispatcher;
 import com.onizuka.framework.http.HttpRequest;
 import com.onizuka.framework.http.HttpResponse;
 import com.onizuka.framework.server.routing.Route;
+import com.onizuka.framework.server.routing.RouteRegistry;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 public class RequestDispatcher {
 
-    private static final List<Route> routes = new ArrayList<>();
+    private static final List<Route> routes = RouteRegistry.getRoutes();
 
-    static {
-        routes.add(new Route(
-                "GET",
-                "/users",
-                req -> new HttpResponse(200, "All Users")
-            ));
-        routes.add(new Route(
-                "GET",
-                "/users/{id}",
-                req -> {
-                    String id = req.getPathParam("id");
-
-                    HttpResponse res = new HttpResponse(200, "{ \"id\": \"" + id + "\" }");
-                    res.addHeader("Content-Type", "application/json");
-
-                    return res;
-                }
-            ));
-    }
+    // Hard coded response
+//    static {
+//        routes.add(new Route(
+//                "GET",
+//                "/users",
+//                req -> new HttpResponse(200, "All Users")
+//            ));
+//        routes.add(new Route(
+//                "GET",
+//                "/users/{id}",
+//                req -> {
+//                    String id = req.getPathParam("id");
+//
+//                    HttpResponse res = new HttpResponse(200, "{ \"id\": \"" + id + "\" }");
+//                    res.addHeader("Content-Type", "application/json");
+//
+//                    return res;
+//                }
+//            ));
+//    }
 
     public static HttpResponse handle(HttpRequest request) {
 
@@ -42,7 +43,7 @@ public class RequestDispatcher {
 
         System.out.println(route);
 
-        return route.handler.apply(request);
+        return route.handler.handle(request);
     }
 
     // Route:
