@@ -2,6 +2,7 @@ package com.onizuka.framework.server;
 
 import com.onizuka.app.controllers.UserController;
 import com.onizuka.framework.client.ClientState;
+import com.onizuka.framework.exception.BadRequestException;
 import com.onizuka.framework.http.HttpRequest;
 import com.onizuka.framework.http.HttpRequestParser;
 import com.onizuka.framework.http.HttpResponse;
@@ -141,7 +142,6 @@ public class NioHttpServer {
 
             try {
                 HttpRequest request = HttpRequestParser.parse(fullRequest);
-
                 DefaultMiddlewareChain chain =
                         new DefaultMiddlewareChain(middlewares, RequestDispatcher::handle);
 
@@ -189,14 +189,9 @@ public class NioHttpServer {
 
                 client.write(ByteBuffer.wrap(response.toString().getBytes(StandardCharsets.UTF_8)));
 
-            } catch (Exception e) {
-                String response =
-                        "HTTP/1.1 400 Bad Request\r\n" +
-                                "Content-Length: 11\r\n" +
-                                "\r\n" +
-                                "Bad Request";
-
-                client.write(ByteBuffer.wrap(response.getBytes()));
+            } catch (BadRequestException e) {
+                HttpResponse res = new HttpResponse(400, e.getMessage());
+                client.write(ByteBuffer.wrap(res.toString().getBytes()));
             }
 
             // connection closed - disables keep-alive/multiple requests per connection
