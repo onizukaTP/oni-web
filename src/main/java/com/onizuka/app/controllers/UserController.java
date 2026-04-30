@@ -16,7 +16,7 @@ public class UserController {
     @GET("/users")
     public HttpResponse getUsers(
             HttpRequest req,
-            @QueryParam("page") String page
+            @QueryParam("page") Integer page
     ) {
         if (page != null) {
             return new HttpResponse(200, "Page: " + page);
