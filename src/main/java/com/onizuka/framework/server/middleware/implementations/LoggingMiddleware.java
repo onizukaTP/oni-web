@@ -4,15 +4,20 @@ import com.onizuka.framework.http.HttpRequest;
 import com.onizuka.framework.http.HttpResponse;
 import com.onizuka.framework.server.middleware.Middleware;
 import com.onizuka.framework.server.middleware.MiddlewareChain;
+import com.onizuka.framework.util.OniLogger;
 
 public class LoggingMiddleware implements Middleware {
+    private static final OniLogger log = OniLogger.get(LoggingMiddleware.class);
+
     @Override
     public HttpResponse handle(HttpRequest request, MiddlewareChain next) {
-        System.out.println("Incoming request: " + request.path);
+        long start = System.currentTimeMillis();
+        log.info("--> " + request.method + " " + request.path);
 
-        HttpResponse response = next.next(request); // go forward
+        HttpResponse response = next.next(request);
 
-        System.out.println("Outgoing request: " + response.status);
+        long duration = System.currentTimeMillis() - start;
+        log.info("<-- " + response.status + " (" + duration + " ms)");
 
         return response;
     }
