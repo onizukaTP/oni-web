@@ -1,13 +1,14 @@
 package com.onizuka.framework.server.routing;
 
-import com.onizuka.framework.annotations.GET;
-import com.onizuka.framework.annotations.PathParam;
-import com.onizuka.framework.annotations.QueryParam;
+import com.onizuka.framework.annotations.*;
 import com.onizuka.framework.exception.BadRequestException;
 import com.onizuka.framework.http.HttpRequest;
 import com.onizuka.framework.http.HttpResponse;
+import com.onizuka.framework.json.JsonUtil;
 import com.onizuka.framework.util.Handler;
+import com.onizuka.framework.util.OniLogger;
 
+import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 import java.util.ArrayList;
@@ -15,192 +16,127 @@ import java.util.List;
 
 public class RouteRegistry {
 
-    // Stores all registered routes
-    private static final List<Route> routes = new ArrayList<>();
+    private static final OniLogger log = OniLogger.get(RouteRegistry.class);
+    private final List<Route> routes = new ArrayList<>();
 
-    /**
-     * This method scans a controller class using reflection
-     * and converts annotated methods into executable routes.
-     */
-    public static void registerRoutes(Class<?> controllerClass) {
+    public void registerController(Class<?> controllerClass) {
         try {
-            // Create a single instance of the controller (like a singleton)
-            Object controllerInstance = controllerClass
-                    .getDeclaredConstructor()
-                    .newInstance();
+            Object controllerInstance = controllerClass.getDeclaredConstructor().newInstance();
+            String basePath = "";
 
-            // Iterate through all methods of the controller
+            if (controllerClass.isAnnotationPresent(Controller.class)) {
+                basePath = controllerClass.getAnnotation(Controller.class).value();
+            }
+
             for (Method method : controllerClass.getDeclaredMethods()) {
+                String httpMethod = null;
+                String routePath = "";
 
-                // Only register methods annotated with @GET
-                if (!method.isAnnotationPresent(GET.class)) continue;
-
-                // Extract route path from annotation
-                GET get = method.getAnnotation(GET.class);
-                String path = get.value();
-
-                // Allow invocation even if method is private
-                method.setAccessible(true);
-
-                /**
-                 * Validate method parameters
-                 * Only allow:
-                 *  - HttpRequest (full request object)
-                 *  - @PathParam (dynamic URL segment)
-                 *  - @QueryParam (query string)
-                 */
-                for (Parameter param : method.getParameters()) {
-
-                    if (param.getType() == HttpRequest.class) continue;
-
-                    if (param.isAnnotationPresent(PathParam.class)) continue;
-
-                    if (param.isAnnotationPresent(QueryParam.class)) continue;
-
-                    // Reject unsupported parameter types early (fail-fast)
-                    throw new RuntimeException(
-                            "Unsupported parameter in " + method.getName() +
-                                    ": " + param.getName()
-                    );
+                if (method.isAnnotationPresent(GET.class)) {
+                    httpMethod = "GET";
+                    routePath = method.getAnnotation(GET.class).value();
+                } else if (method.isAnnotationPresent(POST.class)) {
+                    httpMethod = "POST";
+                    routePath = method.getAnnotation(POST.class).value();
+                } else if (method.isAnnotationPresent(PUT.class)) {
+                    httpMethod = "PUT";
+                    routePath = method.getAnnotation(PUT.class).value();
+                } else if (method.isAnnotationPresent(DELETE.class)) {
+                    httpMethod = "DELETE";
+                    routePath = method.getAnnotation(DELETE.class).value();
+                } else if (method.isAnnotationPresent(PATCH.class)) {
+                    httpMethod = "PATCH";
+                    routePath = method.getAnnotation(PATCH.class).value();
                 }
 
-                /**
-                 * Build a handler (lambda)
-                 * This precomputes execution logic so the dispatcher stays simple.
-                 */
+                if (httpMethod == null) continue;
+
+                String fullPath = normalizePath(basePath + "/" + routePath);
+                method.setAccessible(true);
+
+                for (Parameter param : method.getParameters()) {
+                    if (param.getType() == HttpRequest.class) continue;
+                    if (param.isAnnotationPresent(PathParam.class)) continue;
+                    if (param.isAnnotationPresent(QueryParam.class)) continue;
+                    if (param.isAnnotationPresent(RequestBody.class)) continue;
+
+                    throw new RuntimeException("Unsupported parameter type in method " + method.getName() + ": " + param.getName());
+                }
+
+                String finalHttpMethod = httpMethod;
                 Handler handler = (HttpRequest req) -> {
-                    try {
-                        Parameter[] parameters = method.getParameters();
-                        Object[] args = new Object[parameters.length];
+                    Parameter[] parameters = method.getParameters();
+                    Object[] args = new Object[parameters.length];
 
-                        // Resolve each parameter dynamically at request time
-                        for (int i = 0; i < parameters.length; i++) {
-                            Parameter param = parameters[i];
+                    for (int i = 0; i < parameters.length; i++) {
+                        Parameter param = parameters[i];
 
-                            // Inject full HttpRequest object
-                            if (param.getType() == HttpRequest.class) {
-                                args[i] = req;
+                        if (param.getType() == HttpRequest.class) {
+                            args[i] = req;
+                        } else if (param.isAnnotationPresent(PathParam.class)) {
+                            String name = param.getAnnotation(PathParam.class).value();
+                            String val = req.getPathParam(name);
+                            if (val == null && param.getType().isPrimitive()) {
+                                throw new BadRequestException("Missing path parameter: " + name);
                             }
-
-                            // Handle @PathParam (e.g., /users/{id})
-                            else if (param.isAnnotationPresent(PathParam.class)) {
-                                String name = param.getAnnotation(PathParam.class).value();
-                                String value = req.getPathParam(name);
-                                Class<?> type = param.getType();
-
-                                // Missing value handling
-                                if (value == null) {
-                                    // Primitives cannot be null → throw 400
-                                    if (type.isPrimitive()) {
-                                        throw new BadRequestException("Missing path param: " + name);
-                                    }
-                                    // Wrapper types can be null
-                                    args[i] = null;
-                                } else {
-                                    // Convert string → target type
-                                    args[i] = convert(value, type, name);
-                                }
+                            args[i] = val == null ? null : convert(val, param.getType(), name);
+                        } else if (param.isAnnotationPresent(QueryParam.class)) {
+                            String name = param.getAnnotation(QueryParam.class).value();
+                            String val = req.getQueryParam(name);
+                            if (val == null && param.getType().isPrimitive()) {
+                                throw new BadRequestException("Missing query parameter: " + name);
                             }
-
-                            // Handle @QueryParam (e.g., ?page=1)
-                            else if (param.isAnnotationPresent(QueryParam.class)) {
-                                String name = param.getAnnotation(QueryParam.class).value();
-                                String value = req.getQueryParam(name);
-                                Class<?> type = param.getType();
-
-                                // Missing value handling
-                                if (value == null) {
-                                    if (type.isPrimitive()) {
-                                        throw new BadRequestException("Missing query param: " + name);
-                                    }
-                                    args[i] = null;
-                                } else {
-                                    // Convert string → target type
-                                    args[i] = convert(value, type, name);
-                                }
-                            }
-
-                            // Safety fallback (should never happen due to validation above)
-                            else {
-                                throw new RuntimeException(
-                                        "Unsupported parameter: " + param.getName()
-                                );
-                            }
+                            args[i] = val == null ? null : convert(val, param.getType(), name);
+                        } else if (param.isAnnotationPresent(RequestBody.class)) {
+                            args[i] = JsonUtil.fromJson(req.body, param.getType());
                         }
-
-                        // Invoke controller method using reflection
-                        return (HttpResponse) method.invoke(controllerInstance, args);
-
                     }
-                    // Client error (bad input → 400)
-                    catch (BadRequestException e) {
-                        return new HttpResponse(400, e.getMessage());
-                    }
-                    // Server error (unexpected failure → 500)
-                    catch (Exception e) {
-                        e.printStackTrace();
-                        return new HttpResponse(500, "Internal Server Error");
+
+                    try {
+                        Object result = method.invoke(controllerInstance, args);
+                        if (result instanceof HttpResponse response) {
+                            return response;
+                        }
+                        return new com.onizuka.framework.http.JsonResponse(200, result);
+                    } catch (Exception e) {
+                        Throwable cause = e.getCause() != null ? e.getCause() : e;
+                        if (cause instanceof RuntimeException re) throw re;
+                        throw new RuntimeException(cause);
                     }
                 };
 
-                // Register the route
-                routes.add(new Route("GET", path, handler));
-
-                // Debug log
-                System.out.println("Registered GET " + path);
+                routes.add(new Route(finalHttpMethod, fullPath, handler));
+                log.info("Registered route: [" + finalHttpMethod + "] " + fullPath);
             }
 
         } catch (Exception e) {
-            // Fail fast if controller instantiation fails
-            throw new RuntimeException(e);
+            throw new RuntimeException("Failed to register controller: " + controllerClass.getName(), e);
         }
     }
 
-    private static Object convert(String value, Class<?> type, String name) {
+    private String normalizePath(String path) {
+        return path.replaceAll("//+", "/");
+    }
+
+    private Object convert(String value, Class<?> type, String name) {
         try {
-            // No conversion needed
             if (type == String.class) return value;
-
-            // Integer conversion
-            if (type == int.class || type == Integer.class)
-                return Integer.parseInt(value);
-
-            // Long conversion
-            if (type == long.class || type == Long.class)
-                return Long.parseLong(value);
-
-            // Double conversion
-            if (type == double.class || type == Double.class)
-                return Double.parseDouble(value);
-
-            // Boolean conversion with strict validation
+            if (type == int.class || type == Integer.class) return Integer.parseInt(value);
+            if (type == long.class || type == Long.class) return Long.parseLong(value);
+            if (type == double.class || type == Double.class) return Double.parseDouble(value);
             if (type == boolean.class || type == Boolean.class) {
-                // Prevent silent false (e.g., "abc" → false)
                 if (!value.equalsIgnoreCase("true") && !value.equalsIgnoreCase("false")) {
-                    throw new BadRequestException(
-                            "Invalid boolean value '" + value + "' for parameter '" + name + "'"
-                    );
+                    throw new BadRequestException("Invalid boolean for " + name);
                 }
                 return Boolean.parseBoolean(value);
             }
-
-            // Unsupported type → developer error
             throw new RuntimeException("Unsupported type: " + type.getName());
-
-        }
-        // Invalid numeric format → client error
-        catch (NumberFormatException e) {
-            throw new BadRequestException(
-                    "Invalid value '" + value + "' for parameter '" + name + "'"
-            );
+        } catch (NumberFormatException e) {
+            throw new BadRequestException("Invalid numeric value for parameter '" + name + "': " + value);
         }
     }
 
-    /**
-     * Returns all registered routes
-     * Dispatcher will use this
-     */
-    public static List<Route> getRoutes() {
+    public List<Route> getRoutes() {
         return routes;
     }
 }

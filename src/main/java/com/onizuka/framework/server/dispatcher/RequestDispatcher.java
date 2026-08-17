@@ -1,7 +1,9 @@
 package com.onizuka.framework.server.dispatcher;
 
+import com.onizuka.framework.exception.NotFoundException;
 import com.onizuka.framework.http.HttpRequest;
 import com.onizuka.framework.http.HttpResponse;
+import com.onizuka.framework.server.StaticFileHandler;
 import com.onizuka.framework.server.routing.Route;
 import com.onizuka.framework.server.routing.RouteRegistry;
 
@@ -11,77 +13,56 @@ import java.util.Map;
 
 public class RequestDispatcher {
 
-    private static final List<Route> routes = RouteRegistry.getRoutes();
+    private final RouteRegistry routeRegistry;
+    private final StaticFileHandler staticFileHandler;
 
-    // Hard coded response
-//    static {
-//        routes.add(new Route(
-//                "GET",
-//                "/users",
-//                req -> new HttpResponse(200, "All Users")
-//            ));
-//        routes.add(new Route(
-//                "GET",
-//                "/users/{id}",
-//                req -> {
-//                    String id = req.getPathParam("id");
-//
-//                    HttpResponse res = new HttpResponse(200, "{ \"id\": \"" + id + "\" }");
-//                    res.addHeader("Content-Type", "application/json");
-//
-//                    return res;
-//                }
-//            ));
-//    }
+    public RequestDispatcher(RouteRegistry routeRegistry, StaticFileHandler staticFileHandler) {
+        this.routeRegistry = routeRegistry;
+        this.staticFileHandler = staticFileHandler;
+    }
 
-    public static HttpResponse handle(HttpRequest request) {
+    public HttpResponse handle(HttpRequest request) {
+        if ("GET".equalsIgnoreCase(request.method) && staticFileHandler != null) {
+            HttpResponse staticRes = staticFileHandler.handle(request);
+            if (staticRes != null) return staticRes;
+        }
 
         Route route = match(request);
-
-        if (route == null)
-            return new HttpResponse(404, "Not Found");
-
-        System.out.println(route);
+        if (route == null) {
+            throw new NotFoundException("No route matched path: " + request.path);
+        }
 
         return route.handler.handle(request);
     }
 
-    // Route:
-    // ("GET", "/users/{id}", "User details")
-    public static Route match (HttpRequest request) {
-
-        // /users/123 -> ["users", "123"]
+    public Route match(HttpRequest request) {
+        List<Route> routes = routeRegistry.getRoutes();
         String[] requestParts = request.path.substring(1).split("/");
 
         for (Route route : routes) {
             if (!route.method.equalsIgnoreCase(request.method)) continue;
 
-            // /users/{id} -> ["users", "{id}"]
             String[] patternParts = route.pathPattern.substring(1).split("/");
-
             if (patternParts.length != requestParts.length) continue;
 
             Map<String, String> params = new HashMap<>();
             boolean match = true;
+
             for (int i = 0; i < patternParts.length; i++) {
-                // compare each part with its respective index
                 String pattern = patternParts[i];
                 String actual = requestParts[i];
 
-                // param = {id}
                 if (pattern.startsWith("{") && pattern.endsWith("}")) {
                     String key = pattern.substring(1, pattern.length() - 1);
                     params.put(key, actual);
-                } else {
-                    if (!pattern.equals(actual)) {
-                        match = false;
-                        break;
-                    }
+                } else if (!pattern.equals(actual)) {
+                    match = false;
+                    break;
                 }
             }
+
             if (match) {
                 request.pathParams = params;
-                System.out.println("param: " + request.pathParams);
                 return route;
             }
         }
